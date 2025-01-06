@@ -2,6 +2,7 @@ import json
 import re
 import os
 from urllib.parse import urlparse
+import platform
 
 from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
@@ -32,7 +33,12 @@ arguments = [
     #"-incognito" # You can add this line to open the browser in incognito mode by default 
 ]
 
-browser_path = "/usr/bin/google-chrome"
+# Determine browser path based on OS
+if platform.system() == "Darwin":  # macOS
+    browser_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+else:  # Linux and others
+    browser_path = "/usr/bin/google-chrome"
+
 app = FastAPI()
 
 
