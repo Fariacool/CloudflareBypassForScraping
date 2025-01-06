@@ -93,6 +93,43 @@ def bypass_cloudflare(url: str, retries: int, log: bool) -> ChromiumPage:
         raise e
 
 
+# Function to bypass Cloudflare protection
+def bypass_cloudflare_raw(url: str, retries: int, log: bool) -> Response:
+    from pyvirtualdisplay import Display
+
+    if DOCKER_MODE:
+        # Start Xvfb for Docker
+        display = Display(visible=0, size=(1920, 1080))
+        display.start()
+
+        options = ChromiumOptions()
+        options.set_argument("--auto-open-devtools-for-tabs", "true")
+        options.set_argument("--remote-debugging-port=9222")
+        options.set_argument("--no-sandbox")  # Necessary for Docker
+        options.set_argument("--disable-gpu")  # Optional, helps in some cases
+        options.set_paths(browser_path=browser_path).headless(False)
+    else:
+        options = ChromiumOptions()
+        options.set_argument("--auto-open-devtools-for-tabs", "true")
+        options.set_paths(browser_path=browser_path).headless(False)
+
+    driver = ChromiumPage(addr_or_opts=options)
+    try:
+        driver.listen.start(url)
+        driver.get(url)
+        resp = driver.listen.wait()
+        # print(resp.response.body)
+        cf_bypasser = CloudflareBypasser(driver, retries, log)
+        cf_bypasser.bypass()
+        driver.quit()
+        return resp.response
+    except Exception as e:
+        driver.quit()
+        if DOCKER_MODE:
+            display.stop()  # Stop Xvfb
+        raise e
+    
+
 # Endpoint to get cookies
 @app.get("/cookies", response_model=CookieResponse)
 async def get_cookies(url: str, retries: int = 5):
@@ -122,6 +159,20 @@ async def get_html(url: str, retries: int = 5):
         response.headers["cookies"] = cookies_json
         response.headers["user_agent"] = driver.user_agent
         driver.quit()
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Endpoint to get raw content and cookies
+@app.get("/raw")
+async def get_raw_content(url: str, retries: int = 5):
+    if not is_safe_url(url):
+        raise HTTPException(status_code=400, detail="Invalid URL")
+    try:
+        resp = bypass_cloudflare_raw(url, retries, log)
+
+        response = Response(content=resp.raw_body, status_code=resp.status, media_type=resp.headers.get("content-type", "text/plain"))
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
